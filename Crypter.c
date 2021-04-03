@@ -42,7 +42,7 @@ int main(int argc, char * argv[]) {
         AES_CBC_encrypt_buffer(&context, dec_buf, malloc_size);
 
         // Open file for writing 
-        int outfile = open("stage2", O_CREAT | O_WRONLY , 0755);
+        int outfile = open("stage2_comp", O_CREAT | O_WRONLY , 0755);
         if (outfile) {
             // Write the extern blob
             write(outfile, dec_buf, malloc_size);

